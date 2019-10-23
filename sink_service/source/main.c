@@ -20,11 +20,12 @@
 
 #define LOG_MODULE_NAME "Main"
 #define MAX_LOG_LEVEL INFO_LOG_LEVEL
+
 #include "logger.h"
 
-/* Default serial port */
-static char * port_name = "/dev/ttyACM0";
 
+/* Maximum size of environment parameter value */
+#define MAX_SIZE_PARAMETER 100
 /* Maximum size of dbus service name */
 #define MAX_SIZE_SERVICE_NAME 100
 /* Prefix for sink service name */
@@ -60,17 +61,75 @@ static bool get_service_name(char service_name[MAX_SIZE_SERVICE_NAME], unsigned 
     return true;
 }
 
+
+/**
+ * \brief   Obtains environment parameters to control sink settings
+ * \param   bitrate
+ *          Pointer where to store bitrate value (if any)
+ * \param   port_name
+ *          Pointer where to store port_name value (if any)
+ * \param   sink_id
+ *          Pointer where to store sink_id value (if any)
+ * \param   max_poll_fail_duration
+ *          Pointer where to store max_poll_fail_duration value (if any)
+ * \return  Number of acquired parameters
+ */
+static bool get_env_parameters(unsigned long * bitrate, char * port_name, unsigned int * sink_id, unsigned int * max_poll_fail_duration)
+{
+    char *pTmp;
+    char ebuf[MAX_SIZE_PARAMETER];
+    unsigned int acquired = 0;
+
+    if (( pTmp = getenv( "WM_GW_SINK_BITRATE" )) != NULL )
+    {
+        memset(ebuf, 0, sizeof(ebuf));
+        strncpy(ebuf, pTmp, MAX_SIZE_PARAMETER - 1);
+        *bitrate = strtol(ebuf, NULL, 0);
+        LOGI("WM_GW_SINK_BITRATE: %lu\n", *bitrate);
+        acquired += 1;
+    }
+    if (( pTmp = getenv( "WM_GW_SINK_ID" )) != NULL )
+    {
+        memset(ebuf, 0, sizeof(ebuf));
+        strncpy(ebuf, pTmp, MAX_SIZE_PARAMETER - 1);
+        *sink_id=strtoul(ebuf, NULL, 0);
+        LOGI("WM_GW_SINK_ID: %lu\n", *sink_id);
+        acquired += 1;
+    }
+    if (( pTmp = getenv( "WM_GW_SINK_UART_PORT" )) != NULL )
+    {
+        memset(port_name, 0, sizeof(&port_name));
+        strncpy(port_name, pTmp, MAX_SIZE_PARAMETER - 1);
+        LOGI("WM_GW_SINK_UART_PORT: %s\n", port_name);
+        acquired += 1;
+    }
+    if (( pTmp = getenv( "WM_GW_SINK_MAX_POLL_FAIL_DURATION" )) != NULL )
+    {
+        memset(ebuf, 0, sizeof(ebuf));
+        strncpy(ebuf, pTmp, MAX_SIZE_PARAMETER - 1);
+        *max_poll_fail_duration = strtoul(ebuf, NULL, 0);
+        LOGI("WM_GW_SINK_MAX_POLL_FAIL_DURATION: %lu\n", *max_poll_fail_duration);
+        acquired += 1;
+    }
+    return acquired;
+}
+
+
 int main(int argc, char * argv[])
 {
     unsigned long bitrate = 125000;
     char full_service_name[MAX_SIZE_SERVICE_NAME];
+    char port_name[MAX_SIZE_PARAMETER]="/dev/ttyACM0";
     int r;
     int c;
     unsigned int sink_id = 0;
     uint16_t mesh_version;
     unsigned int max_poll_fail_duration = UNDEFINED_MAX_POLL_FAIL_DURATION;
 
-    /* Parse arguments */
+    /* Acquires environment parameters */
+    get_env_parameters(&bitrate, port_name, &sink_id, &max_poll_fail_duration);
+
+    /* Parse command line arguments - take precedence over environmental ones */
     while ((c = getopt(argc, argv, "b:p:i:d:")) != -1)
     {
         switch (c)
@@ -82,7 +141,7 @@ int main(int argc, char * argv[])
                 break;
             case 'p':
                 /* Get the port name */
-                port_name = optarg;
+                strncpy(port_name, optarg, MAX_SIZE_PARAMETER - 1);
                 break;
             case 'i':
                 /* Get the sink id to generate service name */
